@@ -205,6 +205,10 @@ class Apply(commands.Cog, name="apply"):
         self.bot.add_view(ApplyPanelView())
         self.bot.add_view(AppReviewView())
 
+    def _is_admin(self, ctx):
+        user = ctx.user if isinstance(ctx, discord.Interaction) else ctx.author
+        return user.guild_permissions.administrator
+
     async def _setapplychannel(self, ctx, channel):
         if channel is None:
             return await respond(ctx, content="Please specify a channel.")
@@ -228,8 +232,9 @@ class Apply(commands.Cog, name="apply"):
         await self._setapplychannel(ctx, channel)
 
     @app_commands.command(name="setapplychannel", description="Set the channel for application submissions")
-    @app_commands.default_permissions(administrator=True)
     async def setapplychannel_slash(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not self._is_admin(interaction):
+            return await interaction.response.send_message("Only administrators can use this command.", ephemeral=True)
         await self._setapplychannel(interaction, channel)
 
     async def _setapplyquestions(self, ctx, questions):
@@ -254,8 +259,9 @@ class Apply(commands.Cog, name="apply"):
         await self._setapplyquestions(ctx, questions)
 
     @app_commands.command(name="setapplyquestions", description="Set application questions (separate with |)")
-    @app_commands.default_permissions(administrator=True)
     async def setapplyquestions_slash(self, interaction: discord.Interaction, q1: str, q2: str = None, q3: str = None, q4: str = None, q5: str = None, q6: str = None, q7: str = None, q8: str = None, q9: str = None, q10: str = None):
+        if not self._is_admin(interaction):
+            return await interaction.response.send_message("Only administrators can use this command.", ephemeral=True)
         qs = [q for q in [q1, q2, q3, q4, q5, q6, q7, q8, q9, q10] if q]
         await self._setapplyquestions(interaction, "|".join(qs))
 
@@ -358,8 +364,9 @@ class Apply(commands.Cog, name="apply"):
         await self._accept(ctx, member, app_id)
 
     @app_commands.command(name="accept", description="Accept a bot application")
-    @app_commands.default_permissions(administrator=True)
     async def accept_slash(self, interaction: discord.Interaction, member: discord.Member, application_id: str = None):
+        if not self._is_admin(interaction):
+            return await interaction.response.send_message("Only administrators can use this command.", ephemeral=True)
         await self._accept(interaction, member, application_id)
 
     async def _deny(self, ctx, member, reason, app_id):
@@ -402,8 +409,9 @@ class Apply(commands.Cog, name="apply"):
         await self._deny(ctx, member, reason, app_id)
 
     @app_commands.command(name="deny", description="Deny a bot application")
-    @app_commands.default_permissions(administrator=True)
     async def deny_slash(self, interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided", application_id: str = None):
+        if not self._is_admin(interaction):
+            return await interaction.response.send_message("Only administrators can use this command.", ephemeral=True)
         await self._deny(interaction, member, reason, application_id)
 
     async def _applications(self, ctx, status):
@@ -431,8 +439,9 @@ class Apply(commands.Cog, name="apply"):
         await self._applications(ctx, status)
 
     @app_commands.command(name="applications", description="List applications by status (pending/accepted/denied/all)")
-    @app_commands.default_permissions(administrator=True)
     async def applications_slash(self, interaction: discord.Interaction, status: str = "pending"):
+        if not self._is_admin(interaction):
+            return await interaction.response.send_message("Only administrators can use this command.", ephemeral=True)
         await self._applications(interaction, status)
 
 
