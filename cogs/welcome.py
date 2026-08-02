@@ -36,9 +36,49 @@ class Welcome(commands.Cog, name="welcome"):
         self.data = load_data()
 
     def get_config(self, guild_id):
-        defaults = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None}
+        defaults = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None, "leave_channel": None, "leave_message": "Goodbye {member}! We'll miss you."}
         stored = self.data.get(str(guild_id), {})
         return {**defaults, **stored}
+
+    async def _setleavechannel(self, ctx, channel):
+        if channel is None:
+            return await respond(ctx, content="Please specify a leave channel.")
+        gid = str(ctx.guild_id if isinstance(ctx, discord.Interaction) else ctx.guild.id)
+        if gid not in self.data:
+            self.data[gid] = {}
+        self.data[gid]["leave_channel"] = channel.id
+        save_data(self.data)
+        await respond(ctx, content=f"Leave channel set to {channel.mention}.")
+
+    @commands.command(name="setleavechannel")
+    @commands.has_permissions(administrator=True)
+    async def setleavechannel_prefix(self, ctx, channel: discord.TextChannel = None):
+        await self._setleavechannel(ctx, channel)
+
+    @app_commands.command(name="setleavechannel", description="Set the leave (goodbye) channel")
+    @app_commands.default_permissions(administrator=True)
+    async def setleavechannel_slash(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        await self._setleavechannel(interaction, channel)
+
+    async def _setleavemsg(self, ctx, *, message):
+        if not message:
+            return await respond(ctx, content="Please provide a leave message.")
+        gid = str(ctx.guild_id if isinstance(ctx, discord.Interaction) else ctx.guild.id)
+        if gid not in self.data:
+            self.data[gid] = {}
+        self.data[gid]["leave_message"] = message
+        save_data(self.data)
+        await respond(ctx, content="Leave message updated!")
+
+    @commands.command(name="setleavemsg")
+    @commands.has_permissions(administrator=True)
+    async def setleavemsg_prefix(self, ctx, *, message):
+        await self._setleavemsg(ctx, message=message)
+
+    @app_commands.command(name="setleavemsg", description="Set the leave (goodbye) message")
+    @app_commands.default_permissions(administrator=True)
+    async def setleavemsg_slash(self, interaction: discord.Interaction, message: str):
+        await self._setleavemsg(interaction, message=message)
 
     async def _setwelcome(self, ctx, channel):
         if channel is None:
@@ -167,6 +207,20 @@ class Welcome(commands.Cog, name="welcome"):
                 if config.get("image"):
                     embed.set_image(url=config["image"])
                 await channel.send(embed=embed)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        config = self.get_config(member.guild.id)
+        if not config["leave_channel"]:
+            return
+        channel = member.guild.get_channel(config["leave_channel"])
+        if not channel:
+            return
+        msg = config["leave_message"].replace("{member}", member.mention).replace("{user}", str(member)).replace("{server}", member.guild.name)
+        embed = discord.Embed(description=msg, color=discord.Color.dark_red())
+        embed.set_author(name=f"Goodbye from {member.guild.name}!", icon_url=member.guild.icon.url if member.guild.icon else None)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await channel.send(embed=embed)
 
 
 async def setup(bot):
