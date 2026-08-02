@@ -22,6 +22,7 @@ HELP_TEXTS = {
         "cmds": [
             "kick <member> [reason] - Kick a member",
             "ban <member> [reason] [days=0] - Ban a member",
+            "tempban <member> <days> [reason] - Temporarily ban a member (auto-unban)",
             "unban <user#1234> - Unban a user",
             "mute <member> [duration_m] [reason] - Mute a member",
             "unmute <member> - Unmute a member",
@@ -141,6 +142,7 @@ HELP_TEXTS = {
             "setfilter <invite|link> <on|off> - Toggle filters",
             "addword <word> / removeword <word> - Manage word filter",
             "setmassmentions <count> - Max mentions before auto-delete",
+            "setautomod <emoji|caps|newlines|repeats|dupe> <limit> - Set an auto-mod trigger (0 disables)",
             "setraid <joins> <seconds> - Raid detection",
             "whitelist <channel> / unwhitelist <channel> - Exempt channels",
             "setverify <role> <channel> - Set verification role/channel",

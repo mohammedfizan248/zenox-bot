@@ -5,11 +5,14 @@ import json
 import os
 import time
 import datetime
+import re
+import itertools
 
 DATA_FILE = "data/security.json"
 
 INVITE_REGEX = r"(?:discord\.(?:gg|io|me|li)|discordapp\.com/invite)/([a-zA-Z0-9]+)"
 LINK_REGEX = r"https?://|www\."
+EMOJI_REGEX = r"<a?:\w+:\d+>|[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\uFE0F\u2705-\u27BF]"
 
 
 def load_data():
@@ -46,6 +49,11 @@ DEFAULT_CONFIG = {
     "whitelist": [],
     "verified_role": None,
     "verify_channel": None,
+    "emoji_limit": 0,
+    "caps_limit": 0,
+    "newline_limit": 0,
+    "repeat_limit": 0,
+    "duplicate_limit": 0,
 }
 
 
@@ -55,6 +63,7 @@ class Security(commands.Cog, name="security"):
         self.data = load_data()
         self.flood = {}
         self.join_times = {}
+        self.recent_msgs = {}
         for gid, cfg in self.data.items():
             if cfg.get("verified_role"):
                 self.bot.add_view(VerifyView(cfg["verified_role"]))
@@ -207,6 +216,69 @@ class Security(commands.Cog, name="security"):
     async def setraid_slash(self, interaction: discord.Interaction, joins: app_commands.Range[int, 3, 20] = 5, seconds: app_commands.Range[int, 10, 120] = 30):
         await self._setraid(interaction, joins, seconds)
 
+    # --- AUTO-MOD LIMITS ---
+    def check_automod(self, cfg, content):
+        if cfg["emoji_limit"]:
+            count = len(re.findall(EMOJI_REGEX, content))
+            if count > cfg["emoji_limit"]:
+                return f"emoji spam ({count})"
+        if cfg["caps_limit"]:
+            letters = [c for c in content if c.isalpha()]
+            if len(letters) >= 8:
+                upper = sum(1 for c in letters if c.isupper())
+                percent = int((upper / len(letters)) * 100)
+                if percent >= cfg["caps_limit"]:
+                    return f"caps lock ({percent}%)"
+        if cfg["newline_limit"] and content.count("\n") > cfg["newline_limit"]:
+            return "newline spam"
+        if cfg["repeat_limit"]:
+            longest = max((len(list(g)) for _, g in itertools.groupby(content)), default=0)
+            if longest > cfg["repeat_limit"]:
+                return "character spam"
+        return None
+
+    def check_duplicate(self, cfg, user_id, content):
+        if not cfg["duplicate_limit"]:
+            return None
+        now = time.time()
+        if user_id not in self.recent_msgs:
+            self.recent_msgs[user_id] = []
+        self.recent_msgs[user_id] = [(c, t) for c, t in self.recent_msgs[user_id] if now - t < 10]
+        self.recent_msgs[user_id].append((content, now))
+        if sum(1 for c, _ in self.recent_msgs[user_id] if c == content) >= cfg["duplicate_limit"]:
+            return "duplicate message spam"
+        return None
+
+    AUTOMOD_KEYS = {
+        "emoji": "emoji_limit",
+        "caps": "caps_limit",
+        "newlines": "newline_limit",
+        "repeats": "repeat_limit",
+        "dupe": "duplicate_limit",
+    }
+
+    async def _setautomod(self, ctx, trigger, limit):
+        key = self.AUTOMOD_KEYS.get(trigger)
+        if not key:
+            return await respond(ctx, content="Trigger must be one of: emoji, caps, newlines, repeats, dupe.")
+        cfg = self.config(ctx.guild.id)
+        cfg[key] = limit
+        save_data(self.data)
+        state = "disabled" if limit == 0 else f"**{limit}**"
+        await respond(ctx, content=f"Auto-mod **{trigger}** limit set to {state}.")
+
+    @commands.command(name="setautomod")
+    @commands.has_permissions(administrator=True)
+    async def setautomod_prefix(self, ctx, trigger: str = None, limit: int = None):
+        if not trigger or limit is None:
+            return await ctx.send("Usage: `setautomod <emoji|caps|newlines|repeats|dupe> <limit>` (limit 0 disables)")
+        await self._setautomod(ctx, trigger.lower(), limit)
+
+    @app_commands.command(name="setautomod", description="Set an auto-mod trigger limit (0 disables)")
+    @app_commands.default_permissions(administrator=True)
+    async def setautomod_slash(self, interaction: discord.Interaction, trigger: str, limit: app_commands.Range[int, 0, 100] = 0):
+        await self._setautomod(interaction, trigger.lower(), limit)
+
     async def _whitelist(self, ctx, channel):
         if channel is None:
             return await respond(ctx, content="Please specify a channel.")
@@ -258,6 +330,7 @@ class Security(commands.Cog, name="security"):
         embed.add_field(name="Raid Detection", value=f"{cfg['raid']['joins']} joins / {cfg['raid']['seconds']}s")
         embed.add_field(name="Filtered Words", value=str(len(cfg["words"])))
         embed.add_field(name="Whitelisted Channels", value=str(len(cfg["whitelist"])))
+        embed.add_field(name="AutoMod", value=f"Emoji {cfg['emoji_limit'] or 'off'} | Caps {cfg['caps_limit']}% | Newlines {cfg['newline_limit']} | Repeats {cfg['repeat_limit']} | Dupe {cfg['duplicate_limit']}", inline=False)
         await respond(ctx, embed=embed)
 
     @commands.command(name="securitystatus")
@@ -336,6 +409,10 @@ class Security(commands.Cog, name="security"):
         mentions = len(set(m.id for m in message.mentions)) + len(set(r.id for r in message.role_mentions))
         if cfg["mass_mentions"] and mentions >= cfg["mass_mentions"]:
             reason = f"mass mention ({mentions})"
+        if reason is None:
+            reason = self.check_automod(cfg, content)
+        if reason is None:
+            reason = self.check_duplicate(cfg, author.id, message.content)
         if reason:
             try:
                 await message.delete()

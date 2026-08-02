@@ -4,13 +4,15 @@ from discord.ext import commands
 import datetime
 import json
 import os
+import time
+import asyncio
 
 DATA_FILE = "data/moderation.json"
 
 
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"warnings": {}, "mutes": {}}
+        return {"warnings": {}, "mutes": {}, "tempbans": {}}
     with open(DATA_FILE, "r") as f:
         return json.load(f)
 
@@ -35,6 +37,32 @@ class Moderation(commands.Cog, name="moderation"):
     def __init__(self, bot):
         self.bot = bot
         self.data = load_data()
+        self.data.setdefault("tempbans", {})
+        save_data(self.data)
+        self._load_pending_tempbans()
+
+    def _load_pending_tempbans(self):
+        now = time.time()
+        for uid, info in list(self.data["tempbans"].items()):
+            if info["expiry"] > now:
+                self.bot.loop.create_task(self._schedule_unban(info["guild"], int(uid), info["expiry"]))
+            else:
+                self.bot.loop.create_task(self._unban_now(info["guild"], int(uid)))
+
+    async def _unban_now(self, guild_id, user_id):
+        guild = self.bot.get_guild(guild_id)
+        if not guild:
+            return
+        try:
+            await guild.unban(discord.Object(id=user_id), reason="Temp ban expired")
+        except Exception:
+            pass
+        self.data["tempbans"].pop(str(user_id), None)
+        save_data(self.data)
+
+    async def _schedule_unban(self, guild_id, user_id, expiry):
+        await asyncio.sleep(max(0, expiry - time.time()))
+        await self._unban_now(guild_id, user_id)
 
     # --- KICK ---
     async def _kick(self, ctx, member, reason):
@@ -99,6 +127,42 @@ class Moderation(commands.Cog, name="moderation"):
     @app_commands.default_permissions(ban_members=True)
     async def ban_slash(self, interaction: discord.Interaction, member: discord.Member, delete_days: app_commands.Range[int, 0, 7] = 0, reason: str = "No reason provided"):
         await self._ban(interaction, member, delete_days, reason)
+
+    # --- TEMP BAN ---
+    async def _tempban(self, ctx, member, days, reason):
+        if member is None:
+            return await respond(ctx, content="Please specify a member to temp ban.")
+        author = ctx.author if isinstance(ctx, commands.Context) else ctx.user
+        guild = ctx.guild if isinstance(ctx, commands.Context) else ctx.guild
+        if member == author:
+            return await respond(ctx, content="You can't ban yourself.")
+        if member.top_role >= author.top_role and author != guild.owner:
+            return await respond(ctx, content="You can't ban someone with a higher or equal role.")
+        try:
+            await member.ban(reason=f"[Temp Ban {days}d] {reason}")
+        except discord.Forbidden:
+            return await respond(ctx, content="I don't have permission to ban that member.")
+        expiry = (time.time() + days * 86400)
+        self.data.setdefault("tempbans", {})[str(member.id)] = {"expiry": expiry, "guild": guild.id, "reason": reason}
+        save_data(self.data)
+        self.bot.loop.create_task(self._schedule_unban(guild.id, member.id, expiry))
+        embed = discord.Embed(title="Member Temp Banned", color=discord.Color.red())
+        embed.add_field(name="Member", value=f"{member} ({member.id})")
+        embed.add_field(name="Duration", value=f"{days} day(s)")
+        embed.add_field(name="Unban", value=f"<t:{int(expiry)}:R>")
+        embed.add_field(name="Reason", value=reason)
+        embed.add_field(name="Moderator", value=author.mention)
+        await respond(ctx, embed=embed)
+
+    @commands.command(name="tempban")
+    @commands.has_permissions(ban_members=True)
+    async def tempban_prefix(self, ctx, member: discord.Member = None, days: int = 1, *, reason="No reason provided"):
+        await self._tempban(ctx, member, days, reason)
+
+    @app_commands.command(name="tempban", description="Temporarily ban a member (auto-unban after the duration)")
+    @app_commands.default_permissions(ban_members=True)
+    async def tempban_slash(self, interaction: discord.Interaction, member: discord.Member, days: app_commands.Range[int, 1, 30] = 1, reason: str = "No reason provided"):
+        await self._tempban(interaction, member, days, reason)
 
     # --- UNBAN ---
     async def _unban(self, ctx, user_input):

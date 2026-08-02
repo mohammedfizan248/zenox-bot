@@ -422,6 +422,27 @@ class Protection(commands.Cog, name="protection"):
             await self.handle_nuke(role.guild, discord.AuditLogAction.role_create)
 
     @commands.Cog.listener()
+    async def on_webhooks_update(self, channel):
+        if not channel.guild:
+            return
+        gid = channel.guild.id
+        if not self.enabled(gid):
+            return
+        actor = await self.get_actor(channel.guild, discord.AuditLogAction.webhook_create, target_id=channel.id)
+        if actor is None or actor.id == self.bot.user.id or actor.id == channel.guild.owner_id:
+            return
+        try:
+            for hook in await channel.webhooks():
+                if hook.id != self.bot.user.id:
+                    await hook.delete(reason="Anti-nuke: unauthorized webhook")
+        except Exception:
+            pass
+        await self.log_action(channel.guild, "🔗 Webhook Blocked", f"{actor.mention} created a webhook in {channel.mention}. It was deleted.")
+        member = channel.guild.get_member(actor.id)
+        if member and not (member.guild_permissions.administrator or member.guild_permissions.manage_guild):
+            await self.record_offense(channel.guild, member, "created an unauthorized webhook")
+
+    @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
         if not self.enabled(guild.id):
             return
