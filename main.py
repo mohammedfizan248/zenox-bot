@@ -2,6 +2,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import config
+import os
+import http.server
+import threading
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -312,7 +315,33 @@ async def sync_slash(interaction: discord.Interaction):
     await interaction.response.send_message(f"Synced {len(synced)} slash command(s).", ephemeral=True)
 
 
+def start_health_server():
+    port = int(os.getenv("PORT", "10000"))
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"OK")
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    try:
+        server = http.server.HTTPServer(("0.0.0.0", port), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        print(f"Health server listening on port {port}")
+    except Exception as e:
+        print(f"Health server could not start: {e}")
+
+
 async def main():
+    start_health_server()
     async with bot:
         await load_cogs()
         await bot.start(config.TOKEN)

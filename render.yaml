@@ -1,9 +1,10 @@
 services:
-  - type: worker
+  - type: web
     name: community-bot
     runtime: docker
     plan: free
     autoDeploy: true
+    healthCheckPath: /healthz
     envVars:
       # Set DISCORD_TOKEN in the Render dashboard after creating the service
       - key: DISCORD_TOKEN
