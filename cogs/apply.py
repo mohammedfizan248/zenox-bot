@@ -5,6 +5,7 @@ import json
 import os
 import asyncio
 import datetime
+import re
 
 DATA_FILE = "data/applications.json"
 
@@ -88,11 +89,6 @@ class ApplyModal(discord.ui.Modal, title="Bot Application"):
         view = AppReviewView(gid, app_id)
         target = self.channel or interaction.channel
         await target.send(embed=embed, view=view)
-        channel_id = config.get("channel")
-        if channel_id and channel_id != target.id:
-            ch = interaction.guild.get_channel(channel_id)
-            if ch:
-                await ch.send(embed=embed, view=view)
         await interaction.response.send_message("Your bot application has been submitted! Staff will review it shortly.", ephemeral=True)
 
 
@@ -119,60 +115,95 @@ class ApplyPanelView(discord.ui.View):
 
 
 class AppReviewView(discord.ui.View):
-    def __init__(self, guild_id, app_id):
+    def __init__(self, guild_id=None, app_id=None):
         super().__init__(timeout=None)
         self.guild_id = guild_id
         self.app_id = app_id
 
+    def _resolve(self, interaction):
+        if self.guild_id is not None and self.app_id is not None:
+            return str(self.guild_id), str(self.app_id)
+        gid = str(interaction.guild.id)
+        app_id = None
+        embed = interaction.message.embeds[0] if interaction.message.embeds else None
+        if embed and embed.title:
+            m = re.search(r"#(\d+)", embed.title)
+            if m:
+                app_id = m.group(1)
+        return gid, app_id
+
+    async def _load_app(self, interaction):
+        gid, app_id = self._resolve(interaction)
+        if not app_id:
+            return None, None, None
+        data = load_data()
+        app = data.get(gid, {}).get("apps", {}).get(app_id)
+        return data, app, app_id
+
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.green, emoji="✅", custom_id="accept_app")
     async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("Only admins can review applications.", ephemeral=True)
-        data = load_data()
-        app = data.get(self.guild_id, {}).get("apps", {}).get(self.app_id)
-        if not app:
-            return await interaction.response.send_message("Application not found.", ephemeral=True)
-        app["status"] = "accepted"
-        app["reviewer"] = interaction.user.id
-        save_data(data)
-        member = interaction.guild.get_member(app["user"])
-        if member:
-            try:
-                await member.send(f"🎉 Your bot application **#{self.app_id}** has been **accepted** in **{interaction.guild.name}**! Welcome to the server!")
-            except:
-                pass
-        embed = discord.Embed(title=f"Bot Application #{self.app_id} - Accepted", color=discord.Color.green())
-        embed.add_field(name="Applicant", value=f"<@{app['user']}>")
-        embed.add_field(name="Reviewed by", value=interaction.user.mention)
-        await interaction.response.edit_message(embed=embed, view=None)
+        try:
+            if not interaction.user.guild_permissions.administrator:
+                return await interaction.response.send_message("Only admins can review applications.", ephemeral=True)
+            data, app, app_id = await self._load_app(interaction)
+            if not app:
+                return await interaction.response.send_message("Application not found.", ephemeral=True)
+            if app["status"] != "pending":
+                return await interaction.response.send_message("This application was already reviewed.", ephemeral=True)
+            app["status"] = "accepted"
+            app["reviewer"] = interaction.user.id
+            save_data(data)
+            member = interaction.guild.get_member(app["user"])
+            if member:
+                try:
+                    await member.send(f"🎉 Your bot application **#{app_id}** has been **accepted** in **{interaction.guild.name}**! Welcome to the server!")
+                except:
+                    pass
+            embed = discord.Embed(title=f"Bot Application #{app_id} - Accepted", color=discord.Color.green())
+            embed.add_field(name="Applicant", value=f"<@{app['user']}>")
+            embed.add_field(name="Reviewed by", value=interaction.user.mention)
+            await interaction.response.edit_message(embed=embed, view=None)
+        except Exception as e:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Error: `{e}`", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Error: `{e}`", ephemeral=True)
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.red, emoji="❌", custom_id="deny_app")
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if not interaction.user.guild_permissions.administrator:
-            return await interaction.response.send_message("Only admins can review applications.", ephemeral=True)
-        data = load_data()
-        app = data.get(self.guild_id, {}).get("apps", {}).get(self.app_id)
-        if not app:
-            return await interaction.response.send_message("Application not found.", ephemeral=True)
-        app["status"] = "denied"
-        app["reviewer"] = interaction.user.id
-        save_data(data)
-        member = interaction.guild.get_member(app["user"])
-        if member:
-            try:
-                await member.send(f"Your bot application **#{self.app_id}** in **{interaction.guild.name}** has been **denied**.")
-            except:
-                pass
-        embed = discord.Embed(title=f"Bot Application #{self.app_id} - Denied", color=discord.Color.red())
-        embed.add_field(name="Applicant", value=f"<@{app['user']}>")
-        embed.add_field(name="Reviewed by", value=interaction.user.mention)
-        await interaction.response.edit_message(embed=embed, view=None)
+        try:
+            if not interaction.user.guild_permissions.administrator:
+                return await interaction.response.send_message("Only admins can review applications.", ephemeral=True)
+            data, app, app_id = await self._load_app(interaction)
+            if not app:
+                return await interaction.response.send_message("Application not found.", ephemeral=True)
+            if app["status"] != "pending":
+                return await interaction.response.send_message("This application was already reviewed.", ephemeral=True)
+            app["status"] = "denied"
+            app["reviewer"] = interaction.user.id
+            save_data(data)
+            member = interaction.guild.get_member(app["user"])
+            if member:
+                try:
+                    await member.send(f"Your bot application **#{app_id}** in **{interaction.guild.name}** has been **denied**.")
+                except:
+                    pass
+            embed = discord.Embed(title=f"Bot Application #{app_id} - Denied", color=discord.Color.red())
+            embed.add_field(name="Applicant", value=f"<@{app['user']}>")
+            embed.add_field(name="Reviewed by", value=interaction.user.mention)
+            await interaction.response.edit_message(embed=embed, view=None)
+        except Exception as e:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ Error: `{e}`", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Error: `{e}`", ephemeral=True)
 
 
 class Apply(commands.Cog, name="apply"):
     def __init__(self, bot):
         self.bot = bot
         self.bot.add_view(ApplyPanelView())
+        self.bot.add_view(AppReviewView())
 
     async def _setapplychannel(self, ctx, channel):
         if channel is None:
@@ -271,12 +302,10 @@ class Apply(commands.Cog, name="apply"):
         for i, q in enumerate(questions):
             embed.add_field(name=q, value=answers.get(f"q_{i}", "No answer"), inline=False)
         view = AppReviewView(gid, app_id)
-        await ctx.channel.send(embed=embed, view=view)
-        channel_id = config.get("channel")
-        if channel_id and channel_id != ctx.channel.id:
-            ch = ctx.guild.get_channel(channel_id)
-            if ch:
-                await ch.send(embed=embed, view=view)
+        target = ctx.guild.get_channel(config["channel"]) if config.get("channel") else ctx.channel
+        if target is None:
+            target = ctx.channel
+        await target.send(embed=embed, view=view)
 
     @commands.command(name="apply")
     async def apply_prefix(self, ctx):
