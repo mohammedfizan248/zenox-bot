@@ -39,22 +39,32 @@ QUESTIONS_DEFAULT = [
     "Do you understand the server bot rules?",
     "What roleplay experience do you have?",
     "How many hours can you play per week?",
+    "What will your bot character do in-game?",
+    "Will you always stay in character as a bot?",
+    "What will you do if someone asks you to break character?",
+    "Do you agree to follow all ZENOX ROLEPLAY server rules?",
 ]
 
 
 class ApplyModal(discord.ui.Modal, title="Bot Application"):
-    def __init__(self, questions, channel):
+    def __init__(self, questions, channel, page=0, answers=None):
         super().__init__(timeout=None)
         self.questions = questions
         self.channel = channel
+        self.page = page
+        self.answers = answers or {}
+        page_qs = questions[page * 5 : (page + 1) * 5]
         self.inputs = []
-        for i, q in enumerate(questions[:5]):
-            inp = discord.ui.TextInput(label=q[:45], style=discord.TextStyle.paragraph if len(q) > 50 else discord.TextStyle.short, required=True, max_length=500, custom_id=f"q_{i}")
+        for i, q in enumerate(page_qs):
+            inp = discord.ui.TextInput(label=q[:45], style=discord.TextStyle.paragraph if len(q) > 50 else discord.TextStyle.short, required=True, max_length=500, custom_id=f"p{page}_q{i}")
             self.inputs.append(inp)
             self.add_item(inp)
 
     async def on_submit(self, interaction: discord.Interaction):
-        answers = {f"q_{i}": inp.value for i, inp in enumerate(self.inputs)}
+        self.answers.update({f"q_{self.page * 5 + i}": inp.value for i, inp in enumerate(self.inputs)})
+        if (self.page + 1) * 5 < len(self.questions):
+            await interaction.response.send_modal(ApplyModal(self.questions, self.channel, page=self.page + 1, answers=self.answers))
+            return
         data = load_data()
         gid = str(interaction.guild.id)
         if gid not in data:
@@ -64,7 +74,7 @@ class ApplyModal(discord.ui.Modal, title="Bot Application"):
         config["apps"][app_id] = {
             "user": interaction.user.id,
             "user_name": str(interaction.user),
-            "answers": answers,
+            "answers": self.answers,
             "status": "pending",
             "time": discord.utils.utcnow().isoformat(),
         }
@@ -73,8 +83,8 @@ class ApplyModal(discord.ui.Modal, title="Bot Application"):
         embed.add_field(name="Applicant", value=interaction.user.mention)
         embed.add_field(name="Status", value="Pending")
         embed.add_field(name="Submitted", value=discord.utils.utcnow().strftime("%b %d, %Y %H:%M UTC"))
-        for i, inp in enumerate(self.inputs):
-            embed.add_field(name=self.questions[i] if i < len(self.questions) else f"Question {i+1}", value=inp.value or "No answer", inline=False)
+        for i, q in enumerate(self.questions):
+            embed.add_field(name=q, value=self.answers.get(f"q_{i}", "No answer"), inline=False)
         view = AppReviewView(gid, app_id)
         target = self.channel or interaction.channel
         await target.send(embed=embed, view=view)
@@ -83,7 +93,7 @@ class ApplyModal(discord.ui.Modal, title="Bot Application"):
             ch = interaction.guild.get_channel(channel_id)
             if ch:
                 await ch.send(embed=embed, view=view)
-            await interaction.response.send_message("Your bot application has been submitted! Staff will review it shortly.", ephemeral=True)
+        await interaction.response.send_message("Your bot application has been submitted! Staff will review it shortly.", ephemeral=True)
 
 
 class ApplyPanelView(discord.ui.View):
@@ -197,8 +207,8 @@ class Apply(commands.Cog, name="apply"):
         qlist = [q.strip() for q in questions.split("|") if q.strip()]
         if len(qlist) < 1:
             return await respond(ctx, content="At least 1 question is required.")
-        if len(qlist) > 5:
-            return await respond(ctx, content="Maximum 5 questions allowed (modal limit).")
+        if len(qlist) > 10:
+            return await respond(ctx, content="Maximum 10 questions allowed (5 per form page).")
         gid = str(ctx.guild_id if isinstance(ctx, discord.Interaction) else ctx.guild.id)
         data = load_data()
         if gid not in data:
@@ -214,8 +224,8 @@ class Apply(commands.Cog, name="apply"):
 
     @app_commands.command(name="setapplyquestions", description="Set application questions (separate with |)")
     @app_commands.default_permissions(administrator=True)
-    async def setapplyquestions_slash(self, interaction: discord.Interaction, q1: str, q2: str = None, q3: str = None, q4: str = None, q5: str = None):
-        qs = [q for q in [q1, q2, q3, q4, q5] if q]
+    async def setapplyquestions_slash(self, interaction: discord.Interaction, q1: str, q2: str = None, q3: str = None, q4: str = None, q5: str = None, q6: str = None, q7: str = None, q8: str = None, q9: str = None, q10: str = None):
+        qs = [q for q in [q1, q2, q3, q4, q5, q6, q7, q8, q9, q10] if q]
         await self._setapplyquestions(interaction, "|".join(qs))
 
     async def _apply_prefix(self, ctx):

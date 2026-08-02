@@ -110,7 +110,7 @@ HELP_TEXTS = {
         "desc": "Bot application system.",
         "cmds": [
             "setapplychannel <channel> - Set the applications channel (sends the apply panel)",
-            "setapplyquestions <q1|q2|...> - Set questions (max 5)",
+            "setapplyquestions <q1|q2|...> - Set questions (max 10)",
             "apply - Submit a bot application",
             "accept <member> [app_id] - Accept an application",
             "deny <member> [app_id] [reason] - Deny an application",
