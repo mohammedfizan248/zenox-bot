@@ -106,12 +106,12 @@ HELP_TEXTS = {
         ],
     },
     "apply": {
-        "title": "Whitelist Apply",
-        "desc": "Whitelist application system.",
+        "title": "Bot Apply",
+        "desc": "Bot application system.",
         "cmds": [
             "setapplychannel <channel> - Set the applications channel (sends the apply panel)",
             "setapplyquestions <q1|q2|...> - Set questions (max 5)",
-            "apply - Submit a whitelist application",
+            "apply - Submit a bot application",
             "accept <member> [app_id] - Accept an application",
             "deny <member> [app_id] [reason] - Deny an application",
             "applications [status] - List applications",

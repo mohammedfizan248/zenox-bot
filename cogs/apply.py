@@ -35,14 +35,14 @@ async def respond(ctx_or_interaction, embed=None, content=None, ephemeral=False)
 QUESTIONS_DEFAULT = [
     "What is your in-game name?",
     "How old are you?",
-    "What is your timezone?",
-    "Why do you want to join ZENOX ROLEPLAY?",
+    "Why do you want to play as a bot?",
+    "Do you understand the server bot rules?",
     "What roleplay experience do you have?",
     "How many hours can you play per week?",
 ]
 
 
-class ApplyModal(discord.ui.Modal, title="Whitelist Application"):
+class ApplyModal(discord.ui.Modal, title="Bot Application"):
     def __init__(self, questions, channel):
         super().__init__(timeout=None)
         self.questions = questions
@@ -69,7 +69,7 @@ class ApplyModal(discord.ui.Modal, title="Whitelist Application"):
             "time": discord.utils.utcnow().isoformat(),
         }
         save_data(data)
-        embed = discord.Embed(title=f"New Whitelist Application #{app_id}", color=discord.Color.blue())
+        embed = discord.Embed(title=f"New Bot Application #{app_id}", color=discord.Color.blue())
         embed.add_field(name="Applicant", value=interaction.user.mention)
         embed.add_field(name="Status", value="Pending")
         embed.add_field(name="Submitted", value=discord.utils.utcnow().strftime("%b %d, %Y %H:%M UTC"))
@@ -83,14 +83,14 @@ class ApplyModal(discord.ui.Modal, title="Whitelist Application"):
             ch = interaction.guild.get_channel(channel_id)
             if ch:
                 await ch.send(embed=embed, view=view)
-            await interaction.response.send_message("Your whitelist application has been submitted! Staff will review it shortly.", ephemeral=True)
+            await interaction.response.send_message("Your bot application has been submitted! Staff will review it shortly.", ephemeral=True)
 
 
 class ApplyPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Apply Now", style=discord.ButtonStyle.primary, emoji="🛡️", custom_id="apply_panel")
+    @discord.ui.button(label="Apply Now", style=discord.ButtonStyle.primary, emoji="🤖", custom_id="apply_panel")
     async def apply(self, interaction: discord.Interaction, button: discord.ui.Button):
         gid = str(interaction.guild.id)
         data = load_data()
@@ -128,10 +128,10 @@ class AppReviewView(discord.ui.View):
         member = interaction.guild.get_member(app["user"])
         if member:
             try:
-                await member.send(f"🎉 Your whitelist application **#{self.app_id}** has been **accepted** in **{interaction.guild.name}**! Welcome to the server!")
+                await member.send(f"🎉 Your bot application **#{self.app_id}** has been **accepted** in **{interaction.guild.name}**! Welcome to the server!")
             except:
                 pass
-        embed = discord.Embed(title=f"Whitelist Application #{self.app_id} - Accepted", color=discord.Color.green())
+        embed = discord.Embed(title=f"Bot Application #{self.app_id} - Accepted", color=discord.Color.green())
         embed.add_field(name="Applicant", value=f"<@{app['user']}>")
         embed.add_field(name="Reviewed by", value=interaction.user.mention)
         await interaction.response.edit_message(embed=embed, view=None)
@@ -150,10 +150,10 @@ class AppReviewView(discord.ui.View):
         member = interaction.guild.get_member(app["user"])
         if member:
             try:
-                await member.send(f"Your whitelist application **#{self.app_id}** in **{interaction.guild.name}** has been **denied**.")
+                await member.send(f"Your bot application **#{self.app_id}** in **{interaction.guild.name}** has been **denied**.")
             except:
                 pass
-        embed = discord.Embed(title=f"Whitelist Application #{self.app_id} - Denied", color=discord.Color.red())
+        embed = discord.Embed(title=f"Bot Application #{self.app_id} - Denied", color=discord.Color.red())
         embed.add_field(name="Applicant", value=f"<@{app['user']}>")
         embed.add_field(name="Reviewed by", value=interaction.user.mention)
         await interaction.response.edit_message(embed=embed, view=None)
@@ -174,8 +174,8 @@ class Apply(commands.Cog, name="apply"):
         data[gid]["channel"] = channel.id
         save_data(data)
         embed = discord.Embed(
-            title="🛡️ Whitelist Application",
-            description="Want to join ZENOX ROLEPLAY? Click the button below to apply for the whitelist.",
+            title="🤖 Bot Application",
+            description="Interested in playing as a bot in ZENOX ROLEPLAY? Click the button below to submit your application.",
             color=discord.Color.blue(),
         )
         await channel.send(embed=embed, view=ApplyPanelView())
@@ -229,7 +229,7 @@ class Apply(commands.Cog, name="apply"):
         author = ctx.author
         await ctx.send(f"{author.mention} check your DMs to start the application!")
         try:
-            await author.send("**Whitelist Application**\nAnswer the following questions. Type `cancel` at any time to quit.")
+            await author.send("**Bot Application**\nAnswer the following questions. Type `cancel` at any time to quit.")
         except discord.Forbidden:
             return await ctx.send("I can't DM you! Enable DMs and try again.")
         answers = {}
@@ -254,7 +254,7 @@ class Apply(commands.Cog, name="apply"):
         }
         save_data(data)
         await author.send(f"✅ Whitelist application **#{app_id}** submitted! Staff will review it shortly.")
-        embed = discord.Embed(title=f"New Whitelist Application #{app_id}", color=discord.Color.blue())
+        embed = discord.Embed(title=f"New Bot Application #{app_id}", color=discord.Color.blue())
         embed.add_field(name="Applicant", value=author.mention)
         embed.add_field(name="Status", value="Pending")
         embed.add_field(name="Submitted", value=discord.utils.utcnow().strftime("%b %d, %Y %H:%M UTC"))
@@ -272,7 +272,7 @@ class Apply(commands.Cog, name="apply"):
     async def apply_prefix(self, ctx):
         await self._apply_prefix(ctx)
 
-    @app_commands.command(name="apply", description="Submit a whitelist application")
+    @app_commands.command(name="apply", description="Submit a bot application")
     async def apply_slash(self, interaction: discord.Interaction):
         gid = str(interaction.guild.id)
         data = load_data()
@@ -308,7 +308,7 @@ class Apply(commands.Cog, name="apply"):
         target["reviewer"] = ctx.author.id if isinstance(ctx, commands.Context) else ctx.user.id
         save_data(data)
         try:
-            await member.send(f"🎉 Your whitelist application **#{target_id}** has been **accepted** in **{ctx.guild.name}**! Welcome to the server!")
+            await member.send(f"🎉 Your bot application **#{target_id}** has been **accepted** in **{ctx.guild.name}**! Welcome to the server!")
         except:
             pass
         await respond(ctx, content=f"Accepted application #{target_id} for {member.mention}.")
@@ -318,7 +318,7 @@ class Apply(commands.Cog, name="apply"):
     async def accept_prefix(self, ctx, member: discord.Member = None, app_id: str = None):
         await self._accept(ctx, member, app_id)
 
-    @app_commands.command(name="accept", description="Accept a whitelist application")
+    @app_commands.command(name="accept", description="Accept a bot application")
     @app_commands.default_permissions(administrator=True)
     async def accept_slash(self, interaction: discord.Interaction, member: discord.Member, application_id: str = None):
         await self._accept(interaction, member, application_id)
@@ -349,7 +349,7 @@ class Apply(commands.Cog, name="apply"):
         target["reviewer"] = ctx.author.id if isinstance(ctx, commands.Context) else ctx.user.id
         save_data(data)
         try:
-            msg = f"Your whitelist application **#{target_id}** in **{ctx.guild.name}** has been **denied**."
+            msg = f"Your bot application **#{target_id}** in **{ctx.guild.name}** has been **denied**."
             if reason:
                 msg += f"\nReason: {reason}"
             await member.send(msg)
@@ -362,7 +362,7 @@ class Apply(commands.Cog, name="apply"):
     async def deny_prefix(self, ctx, member: discord.Member = None, app_id: str = None, *, reason="No reason provided"):
         await self._deny(ctx, member, reason, app_id)
 
-    @app_commands.command(name="deny", description="Deny a whitelist application")
+    @app_commands.command(name="deny", description="Deny a bot application")
     @app_commands.default_permissions(administrator=True)
     async def deny_slash(self, interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided", application_id: str = None):
         await self._deny(interaction, member, reason, application_id)
