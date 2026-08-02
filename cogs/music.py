@@ -140,6 +140,47 @@ class Music(commands.Cog, name="music"):
     async def play_slash(self, interaction: discord.Interaction, query: str):
         await self._play(interaction, query)
 
+    # --- JOIN / LEAVE VOICE ---
+    async def _join(self, ctx, channel):
+        if channel is None:
+            channel = await ensure_voice(ctx)
+            if not channel:
+                return
+        guild = ctx.guild
+        if guild.voice_client:
+            if guild.voice_client.channel != channel:
+                await guild.voice_client.move_to(channel)
+                await respond(ctx, content=f"🔊 Moved to {channel.mention}.")
+            else:
+                await respond(ctx, content=f"Already in {channel.mention}.")
+        else:
+            await channel.connect()
+            await respond(ctx, content=f"🔊 Joined {channel.mention}.")
+
+    @commands.command(name="join")
+    async def join_prefix(self, ctx, channel: discord.VoiceChannel = None):
+        await self._join(ctx, channel)
+
+    @app_commands.command(name="join", description="Make the bot join a voice channel")
+    async def join_slash(self, interaction: discord.Interaction, channel: discord.VoiceChannel = None):
+        await self._join(interaction, channel)
+
+    async def _leave(self, ctx):
+        guild = ctx.guild
+        if guild.voice_client:
+            await guild.voice_client.disconnect()
+            await respond(ctx, content="👋 Left the voice channel.")
+        else:
+            await respond(ctx, content="I'm not in a voice channel.")
+
+    @commands.command(name="leave")
+    async def leave_prefix(self, ctx):
+        await self._leave(ctx)
+
+    @app_commands.command(name="leave", description="Disconnect the bot from voice")
+    async def leave_slash(self, interaction: discord.Interaction):
+        await self._leave(interaction)
+
     async def _play_next(self, guild):
         gid = str(guild.id)
         queue = controller.get_queue(gid)

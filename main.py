@@ -77,6 +77,8 @@ HELP_TEXTS = {
         "title": "Music Commands",
         "desc": "Listen to music together.",
         "cmds": [
+            "join [channel] - Make the bot join a voice channel",
+            "leave - Disconnect the bot from voice",
             "play <song/url> - Play a song",
             "skip - Skip the current song",
             "stop - Stop music and clear queue",
