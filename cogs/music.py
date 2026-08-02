@@ -142,20 +142,25 @@ class Music(commands.Cog, name="music"):
 
     # --- JOIN / LEAVE VOICE ---
     async def _join(self, ctx, channel):
-        if channel is None:
-            channel = await ensure_voice(ctx)
-            if not channel:
-                return
-        guild = ctx.guild
-        if guild.voice_client:
-            if guild.voice_client.channel != channel:
-                await guild.voice_client.move_to(channel)
-                await respond(ctx, content=f"🔊 Moved to {channel.mention}.")
+        try:
+            if channel is None:
+                channel = await ensure_voice(ctx)
+                if not channel:
+                    return
+            guild = ctx.guild
+            if guild.voice_client:
+                if guild.voice_client.channel != channel:
+                    await guild.voice_client.move_to(channel)
+                    await respond(ctx, content=f"🔊 Moved to {channel.mention}.")
+                else:
+                    await respond(ctx, content=f"Already in {channel.mention}.")
             else:
-                await respond(ctx, content=f"Already in {channel.mention}.")
-        else:
-            await channel.connect()
-            await respond(ctx, content=f"🔊 Joined {channel.mention}.")
+                await channel.connect()
+                await respond(ctx, content=f"🔊 Joined {channel.mention}.")
+        except discord.Forbidden:
+            await respond(ctx, content="❌ I don't have permission to join that voice channel. Give me `Connect` + `Speak`.")
+        except Exception as e:
+            await respond(ctx, content=f"❌ Could not join: `{e}`")
 
     @commands.command(name="join")
     async def join_prefix(self, ctx, channel: discord.VoiceChannel = None):
@@ -166,12 +171,15 @@ class Music(commands.Cog, name="music"):
         await self._join(interaction, channel)
 
     async def _leave(self, ctx):
-        guild = ctx.guild
-        if guild.voice_client:
-            await guild.voice_client.disconnect()
-            await respond(ctx, content="👋 Left the voice channel.")
-        else:
-            await respond(ctx, content="I'm not in a voice channel.")
+        try:
+            guild = ctx.guild
+            if guild.voice_client:
+                await guild.voice_client.disconnect()
+                await respond(ctx, content="👋 Left the voice channel.")
+            else:
+                await respond(ctx, content="I'm not in a voice channel.")
+        except Exception as e:
+            await respond(ctx, content=f"❌ Could not leave: `{e}`")
 
     @commands.command(name="leave")
     async def leave_prefix(self, ctx):
