@@ -169,6 +169,7 @@ HELP_TEXTS = {
             "lockdown [reason] - Lock the whole server instantly",
             "unlock [reason] - Unlock the server after a lockdown",
             "setaccountage <days> [verify|kick|mute] - New-account protection (0 disables)",
+            "rolelock <add|remove> <role> - Lock a role against deletion, edits, and role changes",
         ],
     },
     "db": {

@@ -20,6 +20,8 @@ DEFAULT_CONFIG = {
     "lockdown": False,
     "lockdown_overwrites": {},
     "trusted_bots": [],
+    "role_lock": [],
+    "role_lock_on": True,
     "offenses": {},
 }
 
@@ -101,10 +103,11 @@ class Protection(commands.Cog, name="protection"):
             if gid in store:
                 store[gid] = [s for s in store[gid] if now - s["ts"] < 60]
 
-    async def get_actor(self, guild, action, limit=10):
+    async def get_actor(self, guild, action, target_id=None, limit=10):
         try:
             async for entry in guild.audit_logs(limit=limit, action=action):
-                return entry.user
+                if target_id is None or getattr(entry.target, "id", None) == target_id:
+                    return entry.user
         except Exception:
             return None
         return None
@@ -283,6 +286,25 @@ class Protection(commands.Cog, name="protection"):
         if not role.guild:
             return
         gid = role.guild.id
+        cfg = self.config(gid)
+        if role.id in cfg.get("role_lock", []) and cfg.get("role_lock_on", True):
+            actor = await self.get_actor(role.guild, discord.AuditLogAction.role_delete, target_id=role.id)
+            try:
+                await role.guild.create_role(
+                    name=role.name,
+                    color=role.color,
+                    permissions=role.permissions,
+                    hoist=role.hoist,
+                    mentionable=role.mentionable,
+                    reason="Role lock: restored locked role",
+                )
+            except Exception:
+                pass
+            await self.log_action(role.guild, "🔒 Role Lock", f"Locked role **{role.name}** was deleted by {actor.mention if actor else 'someone'}. Role restored.")
+            member = role.guild.get_member(actor.id) if actor else None
+            if member and member.id != role.guild.owner_id:
+                await self.record_offense(role.guild, member, "deleted a locked role")
+            return
         if not self.enabled(gid):
             return
         self.record_action(role.guild, "role_del")
@@ -298,6 +320,84 @@ class Protection(commands.Cog, name="protection"):
         })
         if self.count_actions(role.guild, "role_del") >= self.config(gid)["nuke"]["role_del"]:
             await self.handle_nuke(role.guild, discord.AuditLogAction.role_delete)
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(self, before, after):
+        if not after.guild:
+            return
+        gid = after.guild.id
+        cfg = self.config(gid)
+        if not cfg.get("role_lock_on", True):
+            return
+        if after.id not in cfg.get("role_lock", []):
+            return
+        changed = (
+            before.name != after.name
+            or before.permissions.value != after.permissions.value
+            or before.color.value != after.color.value
+            or before.hoist != after.hoist
+            or before.mentionable != after.mentionable
+        )
+        if not changed:
+            return
+        actor = await self.get_actor(after.guild, discord.AuditLogAction.role_update, target_id=after.id)
+        if actor is None or actor.id == self.bot.user.id or actor.id == after.guild.owner_id:
+            return
+        try:
+            await after.edit(
+                name=before.name,
+                permissions=before.permissions,
+                color=before.color,
+                hoist=before.hoist,
+                mentionable=before.mentionable,
+                reason="Role lock: reverted unauthorized change",
+            )
+        except Exception:
+            pass
+        await self.log_action(after.guild, "🔒 Role Lock", f"Unauthorized change to locked role **{after.name}** by {actor.mention} was reverted.")
+        member = after.guild.get_member(actor.id)
+        if member and not (member.guild_permissions.administrator or member.guild_permissions.manage_guild):
+            await self.record_offense(after.guild, member, "edited a locked role")
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        if not after.guild:
+            return
+        gid = after.guild.id
+        cfg = self.config(gid)
+        if not cfg.get("role_lock_on", True):
+            return
+        locks = cfg.get("role_lock", [])
+        if not locks:
+            return
+        before_roles = set(r.id for r in before.roles)
+        after_roles = set(r.id for r in after.roles)
+        added = (after_roles - before_roles) & set(locks)
+        removed = (before_roles - after_roles) & set(locks)
+        if not added and not removed:
+            return
+        actor = await self.get_actor(after.guild, discord.AuditLogAction.member_role_update, target_id=after.id)
+        if actor is None or actor.id == self.bot.user.id or actor.id == after.guild.owner_id:
+            return
+        for rid in added:
+            r = after.guild.get_role(rid)
+            if r:
+                try:
+                    await after.remove_roles(r, reason="Role lock: reverted unauthorized role assignment")
+                except Exception:
+                    pass
+        for rid in removed:
+            r = after.guild.get_role(rid)
+            if r:
+                try:
+                    await after.add_roles(r, reason="Role lock: restored locked role")
+                except Exception:
+                    pass
+        names = ", ".join(f"<@&{r}>" for r in list(added) + list(removed))
+        await self.log_action(after.guild, "🔒 Role Lock", f"Unauthorized role change on locked role(s) {names} for {after.mention} by {actor.mention} was reverted.")
+        member = after.guild.get_member(actor.id)
+        if member and not (member.guild_permissions.administrator or member.guild_permissions.manage_guild):
+            await self.record_offense(after.guild, member, "assigned/removed a locked role")
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel):
@@ -478,6 +578,36 @@ class Protection(commands.Cog, name="protection"):
     async def setaccountage_slash(self, interaction: discord.Interaction, days: app_commands.Range[int, 0, 90] = 7, action: str = None):
         await self._setaccountage(interaction, days, action.lower() if action else None)
 
+    async def _rolelock(self, ctx, add, role):
+        if role is None:
+            return await respond(ctx, content="Please specify a role.")
+        cfg = self.config(ctx.guild.id)
+        locks = cfg.setdefault("role_lock", [])
+        if add:
+            if role.id in locks:
+                return await respond(ctx, content=f"{role.mention} is already locked.")
+            locks.append(role.id)
+            save_data(self.data)
+            await respond(ctx, content=f"🔒 {role.mention} is now **locked**. No one but the server owner can delete, edit, give, or remove it.")
+        else:
+            if role.id not in locks:
+                return await respond(ctx, content=f"{role.mention} is not locked.")
+            locks.remove(role.id)
+            save_data(self.data)
+            await respond(ctx, content=f"🔓 {role.mention} is now **unlocked**.")
+
+    @commands.command(name="rolelock")
+    @commands.has_permissions(administrator=True)
+    async def rolelock_prefix(self, ctx, action: str = None, role: discord.Role = None):
+        if not action or role is None:
+            return await ctx.send("Usage: `rolelock <add|remove> <role>`")
+        await self._rolelock(ctx, action.lower() in ("add", "lock", "on", "1"), role)
+
+    @app_commands.command(name="rolelock", description="Lock or unlock a role from deletion, edits, and role changes")
+    @app_commands.default_permissions(administrator=True)
+    async def rolelock_slash(self, interaction: discord.Interaction, action: str, role: discord.Role):
+        await self._rolelock(interaction, action.lower() in ("add", "lock", "on", "1"), role)
+
     async def _protectionstatus(self, ctx):
         cfg = self.config(ctx.guild.id)
         embed = discord.Embed(title="🛡️ Protection Status", color=discord.Color.blue())
@@ -487,6 +617,8 @@ class Protection(commands.Cog, name="protection"):
         embed.add_field(name="New Account", value=f"{'✅ ON' if cfg['account_age_days'] else '❌ OFF'} ({cfg['account_age_days']}d - {cfg['new_account_action']})")
         embed.add_field(name="Lockdown", value="🔒 Active" if cfg["lockdown"] else "🔓 Inactive")
         embed.add_field(name="Trusted Bots", value=str(len(cfg["trusted_bots"])))
+        locked = cfg.get("role_lock", [])
+        embed.add_field(name="Role Lock", value=f"{'✅ ON' if cfg.get('role_lock_on', True) else '❌ OFF'} ({len(locked)} role{'s' if len(locked) != 1 else ''} locked)")
         await respond(ctx, embed=embed)
 
     @commands.command(name="protectionstatus")
