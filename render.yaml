@@ -1,0 +1,37 @@
+services:
+  - type: worker
+    name: community-bot
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    envVars:
+      # Set DISCORD_TOKEN in the Render dashboard after creating the service
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: COMMAND_PREFIX
+        value: "!"
+      - key: WELCOME_CHANNEL_ID
+        value: "1532057046218969195"
+      - key: AUTO_ROLE_ID
+        value: "1532057045568721049"
+      - key: MOD_ROLE_NAME
+        value: "・ΛDMIN 〢⚒"
+      - key: MUSIC_VOLUME
+        value: "50"
+      - key: SAMP_SERVER_HOST
+        value: ""
+      - key: SAMP_SERVER_PORT
+        value: "7777"
+      - key: SAMP_QUERY_TIMEOUT
+        value: "5"
+      # XLRP database (set the real external host/credentials in the dashboard)
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
