@@ -13,8 +13,15 @@ DATA_FILE = "data/applications.json"
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        try:
+            os.replace(DATA_FILE, DATA_FILE + ".corrupt.bak")
+        except OSError:
+            pass
+        return {}
 
 
 def save_data(data):
