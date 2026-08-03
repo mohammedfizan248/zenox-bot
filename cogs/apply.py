@@ -444,6 +444,12 @@ class Apply(commands.Cog, name="apply"):
             return await interaction.response.send_message("Only administrators can use this command.", ephemeral=True)
         await self._applications(interaction, status)
 
+    @app_commands.command(name="application", description="List applications by status (alias of /applications)")
+    async def application_slash(self, interaction: discord.Interaction, status: str = "pending"):
+        if not self._is_admin(interaction):
+            return await interaction.response.send_message("Only administrators can use this command.", ephemeral=True)
+        await self._applications(interaction, status)
+
 
 async def setup(bot):
     await bot.add_cog(Apply(bot))
