@@ -10,8 +10,27 @@ DATA_FILE = "data/welcome.json"
 def load_data():
     if not os.path.exists(DATA_FILE):
         return {}
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def extract_sticker_id(text):
+    if not text:
+        return None
+    text = text.strip()
+    if text.isdigit():
+        return int(text)
+    import re
+    m = re.search(r"stickers/(\d+)", text)
+    if m:
+        return int(m.group(1))
+    m = re.search(r"(\d{15,})", text)
+    if m:
+        return int(m.group(1))
+    return None
 
 
 def save_data(data):
@@ -36,7 +55,7 @@ class Welcome(commands.Cog, name="welcome"):
         self.data = load_data()
 
     def get_config(self, guild_id):
-        defaults = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None, "leave_channel": None, "leave_message": "Goodbye {member}! We'll miss you."}
+        defaults = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None, "leave_channel": None, "leave_message": "Goodbye {member}! We'll miss you.", "sticker": None}
         stored = self.data.get(str(guild_id), {})
         return {**defaults, **stored}
 
@@ -120,6 +139,27 @@ class Welcome(commands.Cog, name="welcome"):
     async def setwelcomemsg_slash(self, interaction: discord.Interaction, message: str):
         await self._setwelcomemsg(interaction, message=message)
 
+    async def _setwelcomesticker(self, ctx, sticker_input):
+        sticker_id = extract_sticker_id(sticker_input)
+        if not sticker_id:
+            return await respond(ctx, content="Please provide a valid sticker ID or sticker URL.")
+        gid = str(ctx.guild_id if isinstance(ctx, discord.Interaction) else ctx.guild.id)
+        if gid not in self.data:
+            self.data[gid] = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None}
+        self.data[gid]["sticker"] = sticker_id
+        save_data(self.data)
+        await respond(ctx, content=f"Welcome sticker set to `{sticker_id}`.")
+
+    @commands.command(name="setwelcomesticker")
+    @commands.has_permissions(administrator=True)
+    async def setwelcomesticker_prefix(self, ctx, *, sticker: str = None):
+        await self._setwelcomesticker(ctx, sticker)
+
+    @app_commands.command(name="setwelcomesticker", description="Set a sticker to send with the welcome message (ID or URL)")
+    @app_commands.default_permissions(administrator=True)
+    async def setwelcomesticker_slash(self, interaction: discord.Interaction, sticker: str):
+        await self._setwelcomesticker(interaction, sticker)
+
     async def _setautorole(self, ctx, role):
         if role is None:
             return await respond(ctx, content="Please specify a role.")
@@ -172,7 +212,17 @@ class Welcome(commands.Cog, name="welcome"):
             embed.set_image(url=config["image"])
         channel = ctx.guild.get_channel(config["channel"])
         if channel:
-            await channel.send(embed=embed)
+            kwargs = {"embed": embed}
+            if config.get("sticker"):
+                kwargs["stickers"] = [discord.Object(id=config["sticker"])]
+            try:
+                await channel.send(**kwargs)
+            except discord.HTTPException as e:
+                if config.get("sticker"):
+                    await channel.send(embed=embed)
+                    await respond(ctx, content=f"Sent test welcome (sticker failed: `{e}` — sticker may be deleted).")
+                    return
+                raise
             await respond(ctx, content=f"Sent test welcome to {channel.mention}.")
         else:
             await respond(ctx, content="Welcome channel not found.")
@@ -206,7 +256,14 @@ class Welcome(commands.Cog, name="welcome"):
                 embed.set_thumbnail(url=member.display_avatar.url)
                 if config.get("image"):
                     embed.set_image(url=config["image"])
-                await channel.send(embed=embed)
+                kwargs = {"embed": embed}
+                if config.get("sticker"):
+                    kwargs["stickers"] = [discord.Object(id=config["sticker"])]
+                try:
+                    await channel.send(**kwargs)
+                except discord.HTTPException:
+                    if config.get("sticker"):
+                        await channel.send(embed=embed)
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):

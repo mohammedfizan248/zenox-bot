@@ -42,6 +42,7 @@ HELP_TEXTS = {
             "setwelcome <channel> - Set the welcome channel",
             "setwelcomemsg <message> - Set the welcome message",
             "setwelcomeimage <url> - Set a banner image for welcome",
+            "setwelcomesticker <id|url> - Set a sticker to send with welcome",
             "setautorole <role> - Set the auto-role for new members",
             "setleavechannel <channel> - Set the leave (goodbye) channel",
             "setleavemsg <message> - Set the leave (goodbye) message",
