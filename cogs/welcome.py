@@ -33,6 +33,24 @@ def extract_sticker_id(text):
     return None
 
 
+def extract_emoji(text):
+    if not text:
+        return None
+    text = text.strip()
+    import re
+    m = re.match(r"<a?:\w+:(\d+)>", text)
+    if m:
+        return m.group(0)
+    if text.isdigit():
+        return text
+    if len(text) <= 4:
+        return text
+    m = re.search(r"(\d{15,})", text)
+    if m:
+        return m.group(0)
+    return text
+
+
 def save_data(data):
     os.makedirs(os.path.dirname(DATA_FILE), exist_ok=True)
     with open(DATA_FILE, "w") as f:
@@ -55,7 +73,7 @@ class Welcome(commands.Cog, name="welcome"):
         self.data = load_data()
 
     def get_config(self, guild_id):
-        defaults = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None, "leave_channel": None, "leave_message": "Goodbye {member}! We'll miss you.", "sticker": None}
+        defaults = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None, "leave_channel": None, "leave_message": "Goodbye {member}! We'll miss you.", "sticker": None, "emoji": None}
         stored = self.data.get(str(guild_id), {})
         return {**defaults, **stored}
 
@@ -160,6 +178,27 @@ class Welcome(commands.Cog, name="welcome"):
     async def setwelcomesticker_slash(self, interaction: discord.Interaction, sticker: str):
         await self._setwelcomesticker(interaction, sticker)
 
+    async def _setwelcomeemoji(self, ctx, emoji_input):
+        emoji = extract_emoji(emoji_input)
+        if not emoji:
+            return await respond(ctx, content="Please provide a valid emoji (custom `<:name:id>` or unicode).")
+        gid = str(ctx.guild_id if isinstance(ctx, discord.Interaction) else ctx.guild.id)
+        if gid not in self.data:
+            self.data[gid] = {"channel": None, "message": "Welcome {member} to **{server}**!", "autorole": None, "image": None}
+        self.data[gid]["emoji"] = emoji
+        save_data(self.data)
+        await respond(ctx, content=f"Welcome emoji set to {emoji}")
+
+    @commands.command(name="setwelcomeemoji")
+    @commands.has_permissions(administrator=True)
+    async def setwelcomeemoji_prefix(self, ctx, *, emoji: str = None):
+        await self._setwelcomeemoji(ctx, emoji)
+
+    @app_commands.command(name="setwelcomeemoji", description="Set an emoji to send with the welcome message")
+    @app_commands.default_permissions(administrator=True)
+    async def setwelcomeemoji_slash(self, interaction: discord.Interaction, emoji: str):
+        await self._setwelcomeemoji(interaction, emoji)
+
     async def _setautorole(self, ctx, role):
         if role is None:
             return await respond(ctx, content="Please specify a role.")
@@ -206,6 +245,8 @@ class Welcome(commands.Cog, name="welcome"):
             return await respond(ctx, content="Welcome channel not set.")
         mention = ctx.user.mention if isinstance(ctx, discord.Interaction) else ctx.author.mention
         msg = config["message"].replace("{member}", mention).replace("{user}", mention).replace("{server}", ctx.guild.name)
+        if config.get("emoji"):
+            msg = f"{config['emoji']} {msg}"
         embed = discord.Embed(description=msg, color=discord.Color.green())
         embed.set_author(name=f"Welcome to {ctx.guild.name}!", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
         if config.get("image"):
@@ -251,6 +292,8 @@ class Welcome(commands.Cog, name="welcome"):
             channel = member.guild.get_channel(config["channel"])
             if channel:
                 msg = config["message"].replace("{member}", member.mention).replace("{user}", member.mention).replace("{server}", member.guild.name)
+                if config.get("emoji"):
+                    msg = f"{config['emoji']} {msg}"
                 embed = discord.Embed(description=msg, color=discord.Color.green())
                 embed.set_author(name=f"Welcome to {member.guild.name}!", icon_url=member.guild.icon.url if member.guild.icon else None)
                 embed.set_thumbnail(url=member.display_avatar.url)
