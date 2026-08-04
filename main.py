@@ -273,14 +273,24 @@ async def help_prefix(ctx, *, category: str = None):
 class HelpSelect(discord.ui.Select):
     def __init__(self):
         options = [
-            discord.SelectOption(label=cat.capitalize(), value=cat, description=HELP_TEXTS[cat]["desc"])
+            discord.SelectOption(label=cat.capitalize(), value=cat, description=HELP_TEXTS[cat]["desc"][:100])
             for cat in HELP_CATEGORIES
         ]
         super().__init__(placeholder="Choose a category...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
         embed = build_help_embed(self.values[0])
-        await interaction.response.edit_message(embed=embed)
+        await interaction.response.edit_message(embed=embed, view=BackHelpView())
+
+
+class BackHelpView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=120)
+
+    @discord.ui.button(label="Back", style=discord.ButtonStyle.grey, emoji="⬅")
+    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = build_help_embed()
+        await interaction.response.edit_message(embed=embed, view=HelpView())
 
 
 class HelpView(discord.ui.View):
@@ -290,6 +300,11 @@ class HelpView(discord.ui.View):
 
 
 @bot.tree.command(name="help", description="Show bot commands")
+@app_commands.describe(category="Help category to view")
+@app_commands.choices(category=[
+    app_commands.Choice(name=cat.capitalize(), value=cat)
+    for cat in HELP_CATEGORIES
+])
 async def help_slash(interaction: discord.Interaction, category: str = None):
     if category:
         embed = build_help_embed(category.lower())
