@@ -62,6 +62,7 @@ class Admin(commands.Cog, name="admin"):
     @commands.is_owner()
     async def say_prefix(self, ctx, *, message):
         embed = discord.Embed(description=message, color=discord.Color.blue())
+        embed.set_footer(text="- ZX MANAGEMENT")
         await ctx.send(embed=embed)
         try:
             await ctx.message.delete()
@@ -72,6 +73,7 @@ class Admin(commands.Cog, name="admin"):
     @app_commands.default_permissions(administrator=True)
     async def say_slash(self, interaction: discord.Interaction, message: str):
         embed = discord.Embed(description=message, color=discord.Color.blue())
+        embed.set_footer(text="- ZX MANAGEMENT")
         await interaction.channel.send(embed=embed)
         await interaction.response.send_message("✅ Message sent.", ephemeral=True)
 
