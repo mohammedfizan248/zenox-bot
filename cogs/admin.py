@@ -61,7 +61,8 @@ class Admin(commands.Cog, name="admin"):
     @commands.command(name="say")
     @commands.is_owner()
     async def say_prefix(self, ctx, *, message):
-        await ctx.send(message)
+        embed = discord.Embed(description=message, color=discord.Color.blue())
+        await ctx.send(embed=embed)
         try:
             await ctx.message.delete()
         except:
@@ -70,7 +71,8 @@ class Admin(commands.Cog, name="admin"):
     @app_commands.command(name="say", description="Make the bot say a message")
     @app_commands.default_permissions(administrator=True)
     async def say_slash(self, interaction: discord.Interaction, message: str):
-        await interaction.channel.send(message)
+        embed = discord.Embed(description=message, color=discord.Color.blue())
+        await interaction.channel.send(embed=embed)
         await interaction.response.send_message("✅ Message sent.", ephemeral=True)
 
     async def _dm(self, ctx, member, message):
